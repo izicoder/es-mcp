@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EsMcp/EsMcp.csproj" />
+    <Project Path="src/EsSdk/EsSdk.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EsMcp.Tests/EsMcp.Tests.csproj" />
+  </Folder>
+</Solution>

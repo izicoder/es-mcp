@@ -15,7 +15,9 @@ internal static class Native
     internal const uint ReqFullPath = 0x4;
     internal const uint ReqExtension = 0x8;
     internal const uint ReqSize = 0x10;
+    internal const uint ReqDateCreated = 0x20;
     internal const uint ReqDateModified = 0x40;
+    internal const uint ReqDateAccessed = 0x80;
 
     static Native() => DllResolver.Register();
 
@@ -79,16 +81,45 @@ internal static class Native
     internal static extern bool Everything_GetResultDateModified(uint index, out long fileTime);
 
     [DllImport(Dll)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool Everything_GetResultDateCreated(uint index, out long fileTime);
+
+    [DllImport(Dll)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool Everything_GetResultDateAccessed(uint index, out long fileTime);
+
+    // Status surface: no query, no state change.
+    [DllImport(Dll)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool Everything_IsDBLoaded();
+
+    [DllImport(Dll)]
+    internal static extern uint Everything_GetMajorVersion();
+
+    [DllImport(Dll)]
+    internal static extern uint Everything_GetMinorVersion();
+
+    [DllImport(Dll)]
+    internal static extern uint Everything_GetRevision();
+
+    [DllImport(Dll)]
+    internal static extern uint Everything_GetBuildNumber();
+
+    [DllImport(Dll)]
     internal static extern void Everything_CleanUp();
 }
 
 /// <summary>
 /// Locates Everything64.dll instead of relying on it sitting next to the executable.
-/// Order: EVERYTHING_SDK_PATH (file or directory), the app directory, then an Everything install.
+/// Order: EVERYTHING_SDK_PATH (file or directory), the app directory, an Everything install, then PATH.
+/// The path that won is exposed as <see cref="LoadedPath"/> for the status tool.
 /// </summary>
 internal static class DllResolver
 {
     private static int _registered;
+
+    /// <summary>Full path the SDK was loaded from, or <c>null</c> when it never loaded.</summary>
+    internal static string? LoadedPath { get; private set; }
 
     internal static void Register()
     {
@@ -111,7 +142,10 @@ internal static class DllResolver
         foreach (var candidate in Candidates())
         {
             if (!File.Exists(candidate)) continue;
-            if (NativeLibrary.TryLoad(candidate, out var handle)) return handle;
+            if (!NativeLibrary.TryLoad(candidate, out var handle)) continue;
+
+            LoadedPath = candidate;
+            return handle;
         }
 
         return IntPtr.Zero;
@@ -140,6 +174,26 @@ internal static class DllResolver
         {
             if (string.IsNullOrEmpty(root)) continue;
             yield return Path.Combine(root, "Everything", Native.Dll);
+        }
+
+        // Last resort matches what the OS would do anyway; doing it here records the real path.
+        foreach (var entry in PathEntries())
+        {
+            yield return entry;
+        }
+    }
+
+    private static IEnumerable<string> PathEntries()
+    {
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(path)) yield break;
+
+        foreach (var directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (directory.Contains('"')) continue;
+
+            var candidate = Path.Combine(directory, Native.Dll);
+            if (File.Exists(candidate)) yield return candidate;
         }
     }
 }

@@ -50,6 +50,9 @@ function send(method, params) {
 }
 
 const total = (message) => {
+  const structured = message?.result?.structuredContent;
+  if (typeof structured?.total === "number") return structured.total;
+
   const text = message?.result?.content?.[0]?.text ?? "";
   const match = text.match(/^(\d+) total/);
   return match ? Number(match[1]) : 0;

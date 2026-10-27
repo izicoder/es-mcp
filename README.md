@@ -1,19 +1,22 @@
-# es-cli
+# es-mcp
 
-[![build](https://github.com/izicoder/es-cli/actions/workflows/build.yml/badge.svg)](https://github.com/izicoder/es-cli/actions/workflows/build.yml)
+[![build](https://github.com/izicoder/es-mcp/actions/workflows/build.yml/badge.svg)](https://github.com/izicoder/es-mcp/actions/workflows/build.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512bd4.svg)](https://dotnet.microsoft.com/download)
 
-Instant file search for Windows, straight from the command line — or from your AI agent.
+Instant file search for Windows, built for AI agents.
 
-Two small tools over the [voidtools Everything SDK](https://www.voidtools.com/support/everything/sdk/):
+`es-mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server (stdio) that exposes the
+[voidtools Everything SDK](https://www.voidtools.com/support/everything/sdk/) as tools. Queries run against
+Everything's in-memory index, so lookups across millions of files return in milliseconds — no directory
+walking, no indexing of your own.
 
-| Binary | What it is |
+It ships two tools:
+
+| Tool | What it does |
 | --- | --- |
-| `es-cli` | A CLI that queries the Everything index: paths, sizes, dates, JSON output, paging. |
-| `es-mcp` | A [Model Context Protocol](https://modelcontextprotocol.io) server (stdio) that exposes the same search as a `search_files` tool for MCP clients. |
-
-Because queries run against Everything's in-memory index, lookups across millions of files return in milliseconds — no directory walking, no indexing of your own.
+| `search_files` | Find files and folders by name, extension, size or date. Full paths, sizes and timestamps. |
+| `everything_status` | Say whether Everything is running and how large its index is, before searching. |
 
 ## Requirements
 
@@ -22,7 +25,7 @@ Because queries run against Everything's in-memory index, lookups across million
 - [Everything](https://www.voidtools.com/) installed and **running in the background**
 - `Everything64.dll`, the SDK shipped with Everything, reachable in one of these ways:
   1. `EVERYTHING_SDK_PATH` set to the DLL or to the folder containing it
-  2. sitting next to `es-cli.exe` / `es-mcp.exe`
+  2. sitting next to `es-mcp.exe`
   3. the Everything install folder (found automatically, e.g. `C:\Program Files\Everything\`)
 
 The DLL is deliberately **not** bundled here — grab it from your own Everything install.
@@ -32,61 +35,16 @@ The DLL is deliberately **not** bundled here — grab it from your own Everythin
 ```console
 dotnet build
 dotnet test
-dotnet publish src/EsCli -c Release -o out
-dotnet publish src/EsMcp -c Release -o out
+dotnet publish src/EsMcp -c Release -o out/es-mcp
 ```
 
-`dotnet publish` produces framework-dependent single-file executables. For a machine without .NET installed, add `-p:SelfContained=true`.
+`dotnet publish` produces a framework-dependent single-file executable. For a machine without .NET installed,
+add `-p:SelfContained=true`.
 
-## es-cli
+## Register with an MCP client
 
-```console
-es-cli <query> [options]
-
-  -n, --limit N        maximum results (1-1000, default 50)
-  -o, --offset N       skip the first N results
-      --regex          treat the query as a regular expression
-      --case           match case
-      --whole-word     match whole words only
-      --path           match the full path, not just the file name
-      --sort ORDER     name|name-desc|path|path-desc|size|size-desc|extension|
-                       extension-desc|type|type-desc|date-modified|date-modified-desc|
-                       date-created|date-created-desc|date-accessed|date-accessed-desc|
-                       none  (default: path)
-      --json           one JSON object per result (JSON Lines)
-  -h, --help           help
-  -v, --version        version
-```
-
-`--limit=10` works the same as `--limit 10`, and `--` ends option parsing so a query can
-start with `-`: `es-cli -- -draft`.
-
-Query syntax is Everything's own: `ext:cs`, `folder:src`, `dm:today`, `size:>1gb`, wildcards, and so on.
-
-```console
-> es-cli *.sln --sort size-desc -n 3
-# 3 shown / 128 total for "*.sln"
-     9.1 KB  2026-01-14 15:02  E:\work\billing\Billing.sln  [sln]
-     4.2 KB  2026-01-09 09:41  E:\work\web\Web.sln  [sln]
-     3.7 KB  2026-01-08 11:20  E:\work\api\Api.sln  [sln]
-# 125 more — raise --limit or use --offset
-
-> es-cli report ext:pdf dm:thisweek --json | jq -r .path
-E:\work\reports\q1.pdf
-E:\work\reports\q2.pdf
-```
-
-`--json` emits one object per line:
-
-```json
-{"path":"E:\\work\\api\\Api.sln","name":"Api.sln","folder":false,"ext":"sln","size":3784,"modified":"2026-01-08T11:20:13.4412701+03:00"}
-```
-
-Exit codes: `0` success, `1` bad usage, `2` Everything SDK error (Everything not running, or `Everything64.dll` missing/unloadable).
-
-## es-mcp
-
-A stdio MCP server. `dotnet publish` writes it to `out/es-mcp/es-mcp.exe`; copy it wherever you keep tools. Register it with any MCP client - for opencode, in `~/.config/opencode/opencode.json`:
+`dotnet publish` writes `out/es-mcp/es-mcp.exe`. Copy it wherever you keep tools, then point your client at it.
+For opencode, in `~/.config/opencode/opencode.json`:
 
 ```json
 {
@@ -101,17 +59,15 @@ A stdio MCP server. `dotnet publish` writes it to `out/es-mcp/es-mcp.exe`; copy 
 }
 ```
 
-(For Claude Desktop / Cursor style clients, the same idea: `"command": "C:\\tools\\es-mcp\\es-mcp.exe"`, no arguments.)
+For Claude Desktop / Cursor style clients, the same idea: `"command": "C:\\tools\\es-mcp\\es-mcp.exe"`, no arguments.
 
-It exposes one tool, `search_files` (the pre-1.2 name `search` is still accepted on calls):
-
-### `search_files`
+## `search_files`
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `query` | string | required | Everything query (`*.sln`, `report ext:pdf`, `path:src`, `dm:today`, …) |
 | `limit` | integer | 30 | 1-1000 rows; the reply's total count says whether more exist |
-| `offset` | integer | 0 | rows to skip, for paging (`offset += limit`) |
+| `offset` | integer | 0 | rows to skip, for paging (`offset = nextOffset`) |
 | `regex` | boolean | false | query is a regular expression |
 | `case_sensitive` | boolean | false | match case |
 | `whole_word` | boolean | false | whole words only |
@@ -119,7 +75,48 @@ It exposes one tool, `search_files` (the pre-1.2 name `search` is still accepted
 | `sort` | string | `path` | name, path, size, extension, type, date_modified, date_created, date_accessed (+ `_desc`), `none`, or a numeric SDK constant; `sort_by` is an alias |
 | `filter` | string | — | extra clause ANDed onto the query, e.g. `ext:cs path:src` |
 
-Results come back as a compact table:
+The legacy tool name `search` is still accepted on calls.
+
+### Structured results
+
+Besides the text table, every successful call returns `structuredContent` that matches the tool's
+`outputSchema`:
+
+```json
+{
+  "total": 128,
+  "returned": 2,
+  "offset": 0,
+  "hasMore": true,
+  "nextOffset": 2,
+  "results": [
+    {
+      "path": "E:\\work\\api\\Api.sln",
+      "name": "Api.sln",
+      "folder": false,
+      "ext": "sln",
+      "size": 3784,
+      "modified": "2026-01-08T11:20:13.4412701+03:00",
+      "created": "2025-11-02T09:14:00.0000000+03:00",
+      "accessed": "2026-01-09T08:01:44.1200000+03:00"
+    },
+    {
+      "path": "E:\\work\\api\\docs",
+      "name": "docs",
+      "folder": true,
+      "ext": null,
+      "size": null,
+      "modified": "2026-01-30T17:42:10.0000000+03:00",
+      "created": "2025-10-11T12:00:00.0000000+03:00",
+      "accessed": "2026-02-01T10:22:03.0000000+03:00"
+    }
+  ]
+}
+```
+
+Folders carry `size: null` — Everything returns only the folder entry, so its size is not disk usage.
+
+The text form of the same page:
 
 ```
 20 total, showing 3
@@ -134,43 +131,85 @@ A query that matches nothing says exactly that, and says what to change:
 ```
 No files or folders match "quarterly_report_final.csv" - nothing was found for this query.
 Try a different query:
-- a shorter fragment or wildcard: 'report*' instead of 'quarterly_report_final.csv'
+- a shorter fragment or wildcard: 'report*' instead of one exact file name
 - drop narrowing terms: ext:, path:, dm: and size: are ANDed, so each one removes results
 - search full paths: match_path=true, or wrap the fragment in path: like 'path:src\api'
 - broaden dates or sizes: 'dm:thisyear' instead of 'dm:today', 'size:>1mb' instead of 'size:>1gb'
 ```
 
-### What the agent sees
+## `everything_status`
+
+No parameters. Returns whether the SDK loaded, whether Everything is running, the indexed object count,
+the Everything version and the DLL path.
+
+```json
+{
+  "ready": true,
+  "sdkLoaded": true,
+  "databaseLoaded": true,
+  "version": "1.4.1.1026",
+  "sdkPath": "C:\\Program Files\\Everything\\Everything64.dll",
+  "totalCount": 1845267,
+  "error": null
+}
+```
+
+When `ready` is `false`, the call is marked `isError` and `error` says what to fix. That makes it a cheap
+precheck: an agent can call it once instead of discovering a dead Everything through a failed search.
+
+## What the agent sees
 
 The server is written to be usable without prior knowledge and without reading this README:
 
-- **The tool name says what it does.** `search_files`, not `search`, so it wins over web-search tools in an agent's tool list.
-- **The description front-loads the decision**: use it *instead of* `dir`, `Get-ChildItem`, `where.exe` or `glob`, plus the query cheatsheet inline.
-- **`initialize` returns `instructions`** — a short cheatsheet (query syntax, reply format, paging, error meaning) that clients inject into the model's context.
-- **Annotations** mark it `readOnlyHint`, `idempotentHint`, `openWorldHint: false`, so agents know it is a safe, local, repeatable read.
-- **Schema carries the details**: 1-1000 limit range, `enum` of sort orders, `examples` for common calls, and every parameter documented.
-- **Empty and out-of-range results are self-correcting**: they name the failure and list concrete alternatives (broader fragment, drop `path:`/`ext:` terms, `match_path`, wider dates).
+- **Tool names say what they do.** `search_files`, not `search`, so it wins over web-search tools in a tool list.
+- **The description front-loads the decision**: use it *instead of* `dir`, `Get-ChildItem`, `where.exe` or `glob`,
+  plus the query cheatsheet inline.
+- **`initialize` returns `instructions`** — a short cheatsheet (query syntax, reply format, paging, error meaning)
+  that clients inject into the model's context.
+- **Annotations** mark both tools `readOnlyHint`, `idempotentHint`, `openWorldHint: false`, so agents know they are
+  safe, local, repeatable reads.
+- **Schemas carry the details**: 1-1000 limit range, `enum` of sort orders, `examples` for common calls, and output
+  schemas so structured results are self-describing.
+- **Empty and out-of-range results are self-correcting**: they name the failure and list concrete alternatives
+  (broader fragment, drop `path:`/`ext:` terms, `match_path`, wider dates).
+- **Protocol version negotiation**: the server echoes the client's version when it supports it (2024-11-05 through
+  2025-11-25) and otherwise replies with its newest.
+- **stdout stays protocol-clean**; diagnostics are written to stderr.
 
-Agent-side, this replaces `dir`, `Get-ChildItem` and `where.exe`: one call answers "where is this file", "what is the biggest thing on this drive", "list every `.sln` under `E:\work`".
+Agent-side, this replaces `dir`, `Get-ChildItem` and `where.exe`: one call answers "where is this file", "what is
+the biggest thing on this drive", "list every `.sln` under `E:\work`".
 
 ## Layout
 
 ```
-src/EsSdk/            shared Everything SDK interop (native bindings, DLL resolution, search API)
-src/EsCli/            command-line front end
-src/EsMcp/            MCP stdio server (tool catalog, argument parsing, result formatting)
-tests/EsCli.Tests/    xunit tests for CLI parsing and formatting
-tests/EsMcp.Tests/    xunit tests for the tool schema, argument handling and result messages
+src/EsSdk/            Everything SDK interop (native bindings, DLL resolution, search and status API)
+src/EsMcp/            MCP stdio server (protocol loop, tool catalog, argument parsing, result formatting)
+tests/EsMcp.Tests/    xunit tests for the protocol, schemas, argument handling and result messages
+tools/bench.mjs       round-trip latency benchmark against a published es-mcp.exe
 ```
 
-`EsSdk` owns the only `DllImport` surface, so both front ends share one implementation and one error model.
+`EsSdk` owns the only `DllImport` surface and one error model; `EsMcp` owns the protocol.
+
+## Benchmark
+
+Publish first, then run the script with Node:
+
+```console
+dotnet publish src/EsMcp -c Release -o out/es-mcp
+node tools/bench.mjs out/es-mcp/es-mcp.exe 20
+```
+
+It prints a markdown table of p50/p95 round-trip latency per query shape, plus the number of objects Everything
+has indexed.
 
 ## Notes and limits
 
 - Everything must be running; the SDK talks to it over its IPC channel.
-- The SDK keeps process-wide state, so `Everything.Search` serializes calls internally. Run one query at a time per process for maximum throughput.
-- Folder results report no recursive size — Everything returns only the folder entry itself, so treat their `size` as meaningless rather than as disk usage.
-- `date_created` / `date_accessed` sorting needs those properties enabled in Everything's options to be meaningful.
+- The SDK keeps process-wide state, so `Everything.Search` and `Everything.GetStatus` serialize their calls.
+- Folder results report no recursive size — treat their `size` as meaningless rather than as disk usage.
+- `date_created` / `date_accessed` need those properties enabled in Everything's options to be meaningful.
+- `everything_status` derives `totalCount` from a one-row `*` query, because the SDK only reports counts for the
+  last query.
 
 ## License
 

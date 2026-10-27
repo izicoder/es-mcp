@@ -1,6 +1,6 @@
 using EsSdk;
 
-namespace EsCli.Tests;
+namespace EsMcp.Tests;
 
 public class SdkLoadFailureTests
 {

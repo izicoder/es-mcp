@@ -6,7 +6,7 @@ namespace EsMcp.Tests;
 
 public class ToolCatalogTests
 {
-    private static JsonElement Schema => JsonDocument.Parse(ToolCatalog.Schema).RootElement;
+    private static JsonElement Schema => JsonDocument.Parse(ToolCatalog.SearchSchema).RootElement;
 
     [Fact]
     public void Tool_name_is_explicit_about_files()
@@ -302,5 +302,63 @@ public class ResultFormatterTests
         var text = ResultFormatter.Format(Request("x", offset: 4), new SearchResults(5, [File(@"C:\a\5.txt")]));
 
         Assert.Contains("5 total, showing 1 (offset 4)", text, StringComparison.Ordinal);
+    }
+}
+
+public class OutputSchemaTests
+{
+    private static JsonElement Schema(string json) => JsonDocument.Parse(json).RootElement;
+
+    private static JsonElement Payload(object value) => Schema(JsonSerializer.Serialize(value));
+
+    private static string[] Keys(JsonElement element) =>
+        element.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+
+    [Fact]
+    public void Search_payload_matches_the_advertised_output_schema()
+    {
+        var schema = Schema(ToolCatalog.SearchSchema).GetProperty("outputSchema");
+        var request = new ToolRequest("x", new SearchOptions { Limit = 2 });
+        var results = new SearchResults(1, [new FileEntry(@"C:\a\b.txt", false, "txt", 10, DateTime.Now)]);
+
+        var payload = Payload(ResultPayload.Build(request, results));
+
+        Assert.Equal(Keys(schema.GetProperty("properties")), Keys(payload));
+
+        var declaredRequired = schema.GetProperty("required").EnumerateArray().Select(e => e.GetString()!).ToArray();
+        Assert.All(declaredRequired, name => Assert.Contains(name, Keys(payload)));
+
+        var declaredRow = schema.GetProperty("properties").GetProperty("results").GetProperty("items");
+        var payloadRow = payload.GetProperty("results")[0];
+        Assert.Equal(Keys(declaredRow.GetProperty("properties")), Keys(payloadRow));
+    }
+
+    [Fact]
+    public void Status_payload_matches_the_advertised_output_schema()
+    {
+        var schema = Schema(ToolCatalog.StatusSchema).GetProperty("outputSchema");
+        var status = new EverythingStatus(true, true, null, "1.4.1.1026", 10, null);
+
+        var payload = Payload(ResultPayload.BuildStatus(status));
+
+        Assert.Equal(Keys(schema.GetProperty("properties")), Keys(payload));
+    }
+
+    [Fact]
+    public void Both_tools_declare_an_object_input_schema()
+    {
+        Assert.Equal("object", Schema(ToolCatalog.SearchSchema).GetProperty("inputSchema").GetProperty("type").GetString());
+        Assert.Equal("object", Schema(ToolCatalog.StatusSchema).GetProperty("inputSchema").GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void Both_schemas_are_marked_read_only()
+    {
+        foreach (var json in new[] { ToolCatalog.SearchSchema, ToolCatalog.StatusSchema })
+        {
+            var annotations = Schema(json).GetProperty("annotations");
+            Assert.True(annotations.GetProperty("readOnlyHint").GetBoolean());
+            Assert.False(annotations.GetProperty("openWorldHint").GetBoolean());
+        }
     }
 }
