@@ -10,6 +10,7 @@ out/
 *.user
 *.suo
 .codegraph/
+.playwright-mcp/
 
 # Third-party / machine-specific binaries are never committed
 Everything64.dll
