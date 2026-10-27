@@ -136,6 +136,10 @@ internal static class Program
             var results = Everything.Search(toolRequest!.Query, toolRequest.Options);
             ToolResult(id, (ResultFormatter.Format(toolRequest, results), false));
         }
+        catch (Exception ex) when (SdkLoadFailure.IsLoadFailure(ex))
+        {
+            ToolResult(id, (SdkLoadFailure.Describe(ex), true));
+        }
         catch (EverythingException ex)
         {
             ToolResult(id, ($"error: {ex.Message}. Ask the user to start voidtools Everything, then retry.", true));
