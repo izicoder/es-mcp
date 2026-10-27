@@ -29,6 +29,7 @@ It ships two tools:
   <source media="(prefers-color-scheme: dark)" srcset="docs/bench-latency-dark.svg">
   <img src="docs/bench-latency.svg" alt="Time to first result: es-mcp 244 ms, mamertofabian 1,771 ms, elis132 1,959 ms" width="760">
 </picture>
+
 Measured on the same machine, same Everything index (1.7M objects), same six queries, limit 30.
 `node tools/compare.mjs` reproduces both charts; `tools/bench-results.json` holds the raw numbers.
 
