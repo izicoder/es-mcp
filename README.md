@@ -20,10 +20,15 @@ It ships two tools:
 
 ## How it compares
 
-![Tokens per search reply](docs/bench-tokens.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/bench-tokens-dark.svg">
+  <img src="docs/bench-tokens.svg" alt="Tokens per search reply: es-mcp 1,091, elis132 1,899, mamertofabian 1,946" width="760">
+</picture>
 
-![Time to first result](docs/bench-latency.svg)
-
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/bench-latency-dark.svg">
+  <img src="docs/bench-latency.svg" alt="Time to first result: es-mcp 244 ms, mamertofabian 1,771 ms, elis132 1,959 ms" width="760">
+</picture>
 Measured on the same machine, same Everything index (1.7M objects), same six queries, limit 30.
 `node tools/compare.mjs` reproduces both charts; `tools/bench-results.json` holds the raw numbers.
 
