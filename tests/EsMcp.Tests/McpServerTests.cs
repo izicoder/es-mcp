@@ -105,7 +105,7 @@ public class McpServerTests
         var result = SearchCall(server, """{"query":"*.txt"}""").GetProperty("result");
 
         Assert.False(result.GetProperty("isError").GetBoolean());
-        Assert.StartsWith("2 results", result.GetProperty("content")[0].GetProperty("text").GetString(), StringComparison.Ordinal);
+        Assert.StartsWith("2 matches, showing 2", result.GetProperty("content")[0].GetProperty("text").GetString(), StringComparison.Ordinal);
 
         var structured = result.GetProperty("structuredContent");
         Assert.Equal(2, structured.GetProperty("total").GetInt32());
@@ -116,17 +116,53 @@ public class McpServerTests
 
         var rows = structured.GetProperty("results").EnumerateArray().ToArray();
         Assert.Equal(@"C:\a\b.txt", rows[0].GetProperty("path").GetString());
-        Assert.Equal("b.txt", rows[0].GetProperty("name").GetString());
-        Assert.False(rows[0].GetProperty("folder").GetBoolean());
-        Assert.Equal("txt", rows[0].GetProperty("ext").GetString());
         Assert.Equal(1024, rows[0].GetProperty("size").GetInt64());
-        Assert.NotNull(rows[0].GetProperty("modified").GetString());
-        Assert.NotNull(rows[0].GetProperty("created").GetString());
-        Assert.NotNull(rows[0].GetProperty("accessed").GetString());
+        Assert.Equal("2026-01-02 03:04", rows[0].GetProperty("modified").GetString());
+        // Default rows stay cheap: name and ext are inside path, created/accessed are opt-in.
+        Assert.False(rows[0].TryGetProperty("name", out _));
+        Assert.False(rows[0].TryGetProperty("ext", out _));
+        Assert.False(rows[0].TryGetProperty("created", out _));
+        Assert.False(rows[0].TryGetProperty("accessed", out _));
 
+        // Folder rows carry the flag but no size, since Everything does not report folder sizes.
         Assert.True(rows[1].GetProperty("folder").GetBoolean());
-        Assert.Equal(JsonValueKind.Null, rows[1].GetProperty("size").ValueKind);
-        Assert.Equal(JsonValueKind.Null, rows[1].GetProperty("ext").ValueKind);
+        Assert.False(rows[1].TryGetProperty("size", out _));
+    }
+
+    [Fact]
+    public void Format_full_adds_the_metadata_fields()
+    {
+        var server = Server(_ => new SearchResults(1, [File(@"C:\a\b.txt")]));
+
+        var row = SearchCall(server, """{"query":"x","format":"full"}""")
+            .GetProperty("result").GetProperty("structuredContent").GetProperty("results")[0];
+
+        Assert.Equal("b.txt", row.GetProperty("name").GetString());
+        Assert.Equal("txt", row.GetProperty("ext").GetString());
+        Assert.NotNull(row.GetProperty("created").GetString());
+        Assert.NotNull(row.GetProperty("accessed").GetString());
+    }
+
+    [Fact]
+    public void Format_text_sends_the_table_and_no_structured_content()
+    {
+        var server = Server(_ => new SearchResults(1, [File(@"C:\a\b.txt")]));
+
+        var result = SearchCall(server, """{"query":"x","format":"text"}""").GetProperty("result");
+
+        Assert.Contains(@"C:\a\b.txt", result.GetProperty("content")[0].GetProperty("text").GetString(), StringComparison.Ordinal);
+        Assert.False(result.TryGetProperty("structuredContent", out _));
+    }
+
+    [Fact]
+    public void Unknown_format_falls_back_to_the_default_shape()
+    {
+        var server = Server(_ => new SearchResults(1, [File(@"C:\a\b.txt")]));
+
+        var result = SearchCall(server, """{"query":"x","format":"yaml"}""").GetProperty("result");
+
+        Assert.True(result.TryGetProperty("structuredContent", out var structured));
+        Assert.Equal(1, structured.GetProperty("total").GetInt32());
     }
 
     [Fact]

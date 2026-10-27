@@ -155,11 +155,15 @@ internal sealed class McpServer
         try
         {
             var results = _search(toolRequest!);
+            var structured = toolRequest!.Format == OutputFormat.Text ? null : ResultPayload.Build(toolRequest!, results);
+
             return ToolResult(
                 id,
-                ResultFormatter.Format(toolRequest!, results),
+                structured is null
+                    ? ResultFormatter.Format(toolRequest!, results)
+                    : ResultFormatter.Summary(toolRequest!, results),
                 isError: false,
-                ResultPayload.Build(toolRequest!, results));
+                structured);
         }
         catch (Exception ex) when (SdkLoadFailure.IsLoadFailure(ex))
         {

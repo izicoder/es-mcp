@@ -18,6 +18,31 @@ It ships two tools:
 | `search_files` | Find files and folders by name, extension, size or date. Full paths, sizes and timestamps. |
 | `everything_status` | Say whether Everything is running and how large its index is, before searching. |
 
+## How it compares
+
+![Tokens per search reply](docs/bench-tokens.svg)
+
+![Time to first result](docs/bench-latency.svg)
+
+Measured on the same machine, same Everything index (1.7M objects), same six queries, limit 30.
+`node tools/compare.mjs` reproduces both charts; `tools/bench-results.json` holds the raw numbers.
+
+| | **es-mcp** | [mamertofabian/mcp-everything-search](https://github.com/mamertofabian/mcp-everything-search) | [elis132/everything-mcp](https://github.com/elis132/everything-mcp) |
+| --- | --- | --- | --- |
+| Language | C# | Python | Python |
+| Talks to Everything via | SDK DLL, in-process | SDK DLL, in-process | `es.exe` process per query |
+| Runtime to install | .NET 10, or one self-contained `.exe` | Python 3.10+ and `uvx` | Python 3.10+ and `es.exe` |
+| Cold start | **141 ms** | 1,726 ms | 1,855 ms |
+| Time to first result | **244 ms** | 1,771 ms | 1,959 ms |
+| Warm search, p50 | 21 ms | **20 ms** | 131 ms |
+| Tokens per 30-row reply | **1,091** | 1,946 | 1,899 |
+| Typed results (`structuredContent`) | yes | no | no |
+
+Warm search is a draw with the ctypes server - both call the same SDK in the same process. The
+differences that show up in use are startup (about 1.5 seconds per agent session) and reply size.
+
+Measured on an i5-3570, 16 GB RAM, Windows x64, Everything indexing 1.7M objects.
+
 ## Requirements
 
 - Windows x64
@@ -74,49 +99,42 @@ For Claude Desktop / Cursor style clients, the same idea: `"command": "C:\\tools
 | `match_path` | boolean | false | match the full path, not just the name |
 | `sort` | string | `path` | name, path, size, extension, type, date_modified, date_created, date_accessed (+ `_desc`), `none`, or a numeric SDK constant; `sort_by` is an alias |
 | `filter` | string | — | extra clause ANDed onto the query, e.g. `ext:cs path:src` |
+| `format` | string | `json` | `json` = rows in `structuredContent` + one line summary; `text` = the table only; `full` = adds `name`, `ext`, `created`, `accessed` |
 
 The legacy tool name `search` is still accepted on calls.
 
-### Structured results
+### Replies
 
-Besides the text table, every successful call returns `structuredContent` that matches the tool's
-`outputSchema`:
+The default (`format: "json"`) puts the rows in `structuredContent`, which matches the tool's
+`outputSchema`, and keeps the text block to one line:
+
+```
+20 matches, showing 3; next page offset 3
+```
 
 ```json
 {
-  "total": 128,
-  "returned": 2,
+  "total": 20,
+  "returned": 3,
   "offset": 0,
   "hasMore": true,
-  "nextOffset": 2,
+  "nextOffset": 3,
   "results": [
-    {
-      "path": "E:\\work\\api\\Api.sln",
-      "name": "Api.sln",
-      "folder": false,
-      "ext": "sln",
-      "size": 3784,
-      "modified": "2026-01-08T11:20:13.4412701+03:00",
-      "created": "2025-11-02T09:14:00.0000000+03:00",
-      "accessed": "2026-01-09T08:01:44.1200000+03:00"
-    },
-    {
-      "path": "E:\\work\\api\\docs",
-      "name": "docs",
-      "folder": true,
-      "ext": null,
-      "size": null,
-      "modified": "2026-01-30T17:42:10.0000000+03:00",
-      "created": "2025-10-11T12:00:00.0000000+03:00",
-      "accessed": "2026-02-01T10:22:03.0000000+03:00"
-    }
+    { "path": "E:\\src\\api\\README.md", "size": 1234, "modified": "2026-02-03 09:14" },
+    { "path": "E:\\src\\api\\docs", "folder": true, "modified": "2026-01-30 17:42" }
   ]
 }
 ```
 
-Folders carry `size: null` — Everything returns only the folder entry, so its size is not disk usage.
+Four fields per row, on purpose: `name` and `ext` are already inside `path`, `created` and `accessed`
+are rarely what a search is for, and folders carry no `size` because Everything does not report one.
+That is 65% fewer tokens than the 2.0.0 payload for the same result set, and about half of what the
+other Everything MCP servers send for the same 30 rows.
 
-The text form of the same page:
+Ask for more only when you need it:
+
+- `format: "full"` - adds `name`, `ext`, `created` and `accessed`, with ISO 8601 timestamps.
+- `format: "text"` - the table below and no `structuredContent`, for clients that never read it.
 
 ```
 20 total, showing 3
@@ -185,22 +203,31 @@ the biggest thing on this drive", "list every `.sln` under `E:\work`".
 src/EsSdk/            Everything SDK interop (native bindings, DLL resolution, search and status API)
 src/EsMcp/            MCP stdio server (protocol loop, tool catalog, argument parsing, result formatting)
 tests/EsMcp.Tests/    xunit tests for the protocol, schemas, argument handling and result messages
-tools/bench.mjs       round-trip latency benchmark against a published es-mcp.exe
+tools/bench.mjs       round-trip latency against a published es-mcp.exe
+tools/compare.mjs     the same, head to head with other MCP file-search servers, plus payload size
+tools/charts.mjs      turns bench-results.json into the two SVGs in docs/
+docs/                 generated charts, plus bench-summary.json
 ```
 
 `EsSdk` owns the only `DllImport` surface and one error model; `EsMcp` owns the protocol.
 
 ## Benchmark
 
-Publish first, then run the script with Node:
+Publish first, then run the scripts with Node:
 
 ```console
 dotnet publish src/EsMcp -c Release -o out/es-mcp
-node tools/bench.mjs out/es-mcp/es-mcp.exe 20
+node tools/bench.mjs out/es-mcp/es-mcp.exe 20          # this server alone
+node tools/compare.mjs --save tools/bench-results.json # head to head, writes the raw numbers
+node tools/charts.mjs                                  # regenerates docs/*.svg
 ```
 
-It prints a markdown table of p50/p95 round-trip latency per query shape, plus the number of objects Everything
-has indexed.
+`compare.mjs` starts each server over stdio, measures cold start, time to first result and warm
+p50/p95, then measures the payload each reply puts into a model's context. It skips any server whose
+executable is missing, so you need `es.exe` on hand (for the es.exe based servers) and
+`EVERYTHING_SDK_PATH` set (for the SDK based ones). Point it at other servers by adding an entry to
+`SERVERS` in the script; the query set and limits are shared, which is the only way the numbers mean
+anything.
 
 ## Notes and limits
 
