@@ -118,6 +118,8 @@ internal static class ToolArguments
             "sizedesc" or "sizedescending" => SortOrder.SizeDescending,
             "extension" or "ext" => SortOrder.Extension,
             "extensiondesc" or "extdesc" => SortOrder.ExtensionDescending,
+            "type" => SortOrder.Type,
+            "typedesc" or "typedescending" => SortOrder.TypeDescending,
             "datemodified" or "modified" => SortOrder.DateModified,
             "datemodifieddesc" or "modifieddesc" => SortOrder.DateModifiedDescending,
             "datecreated" or "created" => SortOrder.DateCreated,
