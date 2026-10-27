@@ -54,7 +54,14 @@ public sealed record SearchOptions
 }
 
 /// <summary>One file or folder matched by a query.</summary>
-public sealed record FileEntry(string FullPath, bool IsFolder, string Extension, long Size, DateTime? DateModified)
+public sealed record FileEntry(
+    string FullPath,
+    bool IsFolder,
+    string Extension,
+    long Size,
+    DateTime? DateModified,
+    DateTime? DateCreated = null,
+    DateTime? DateAccessed = null)
 {
     /// <summary>File name without the directory part.</summary>
     public string Name => Path.GetFileName(FullPath);
@@ -62,6 +69,22 @@ public sealed record FileEntry(string FullPath, bool IsFolder, string Extension,
 
 /// <summary>Search results plus the unfiltered match count.</summary>
 public sealed record SearchResults(uint Total, IReadOnlyList<FileEntry> Entries);
+
+/// <summary>
+/// A cheap health probe for agents: whether the SDK loaded, whether Everything is running,
+/// and how many objects it has indexed. Read-only.
+/// </summary>
+public sealed record EverythingStatus(
+    bool SdkLoaded,
+    bool DatabaseLoaded,
+    string? SdkPath,
+    string? EverythingVersion,
+    uint TotalCount,
+    string? Error)
+{
+    /// <summary>True when the caller can run searches right now.</summary>
+    public bool Ready => SdkLoaded && DatabaseLoaded;
+}
 
 /// <summary>Raised when the Everything SDK reports an error (usually: Everything is not running).</summary>
 public sealed class EverythingException : Exception
@@ -123,7 +146,8 @@ public static class Everything
             Native.Everything_SetSort((uint)options.Sort);
             Native.Everything_SetRequestFlags(
                 Native.ReqFileName | Native.ReqPath | Native.ReqFullPath |
-                Native.ReqExtension | Native.ReqSize | Native.ReqDateModified);
+                Native.ReqExtension | Native.ReqSize |
+                Native.ReqDateCreated | Native.ReqDateModified | Native.ReqDateAccessed);
 
             if (!Native.Everything_QueryW(true))
             {
@@ -151,11 +175,18 @@ public static class Everything
                         var extension = Marshal.PtrToStringUni(Native.Everything_GetResultExtensionW(i)) ?? string.Empty;
 
                         var size = Native.Everything_GetResultSize(i, out var bytes) ? bytes : 0;
-                        var modified = Native.Everything_GetResultDateModified(i, out var fileTime)
-                            ? ToLocalTime(fileTime)
+                        var modified = Native.Everything_GetResultDateModified(i, out var modifiedTime)
+                            ? ToLocalTime(modifiedTime)
+                            : null;
+                        var created = Native.Everything_GetResultDateCreated(i, out var createdTime)
+                            ? ToLocalTime(createdTime)
+                            : null;
+                        var accessed = Native.Everything_GetResultDateAccessed(i, out var accessedTime)
+                            ? ToLocalTime(accessedTime)
                             : null;
 
-                        entries.Add(new FileEntry(path, Native.Everything_IsFolderResult(i), extension, size, modified));
+                        entries.Add(new FileEntry(
+                            path, Native.Everything_IsFolderResult(i), extension, size, modified, created, accessed));
                     }
                 }
                 finally
@@ -168,6 +199,59 @@ public static class Everything
             finally
             {
                 Native.Everything_CleanUp();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Probe the SDK and the running Everything instance. Never throws: a missing DLL becomes
+    /// <see cref="EverythingStatus.Error"/> with <c>SdkLoaded = false</c>.
+    /// </summary>
+    public static EverythingStatus GetStatus()
+    {
+        lock (Gate)
+        {
+            try
+            {
+                // First native call also triggers the DLL resolver, so a load failure lands here.
+                var loaded = Native.Everything_IsDBLoaded();
+
+                // The SDK reports counts for the last query only, so ask the cheapest one there is.
+                uint total = 0;
+                if (loaded)
+                {
+                    Native.Everything_SetSearchW("*");
+                    Native.Everything_SetMax(1);
+                    Native.Everything_SetOffset(0);
+                    if (Native.Everything_QueryW(true)) total = Native.Everything_GetTotResults();
+                    Native.Everything_CleanUp();
+                }
+
+                var major = Native.Everything_GetMajorVersion();
+                var minor = Native.Everything_GetMinorVersion();
+                var revision = Native.Everything_GetRevision();
+                var build = Native.Everything_GetBuildNumber();
+                var version = major + minor + revision + build == 0
+                    ? null
+                    : $"{major}.{minor}.{revision}.{build}";
+
+                return new EverythingStatus(
+                    SdkLoaded: true,
+                    DatabaseLoaded: loaded,
+                    SdkPath: DllResolver.LoadedPath,
+                    EverythingVersion: version,
+                    TotalCount: total,
+                    Error: loaded ? null : "Everything is not running (IPC failed). Ask the user to start voidtools Everything.");
+            }
+            catch (Exception ex) when (SdkLoadFailure.IsLoadFailure(ex))
+            {
+                return new EverythingStatus(
+                    SdkLoaded: false,
+                    DatabaseLoaded: false,
+                    SdkPath: DllResolver.LoadedPath,
+                    EverythingVersion: null,
+                    TotalCount: 0,
+                    Error: SdkLoadFailure.Describe(ex));
             }
         }
     }

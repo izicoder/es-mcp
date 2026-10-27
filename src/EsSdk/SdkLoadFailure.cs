@@ -1,8 +1,8 @@
 namespace EsSdk;
 
 /// <summary>
-/// Shared wording for the one failure the SDK cannot report itself: the native DLL never loaded,
-/// so no <c>Everything_*</c> call ever ran. Both front ends use this to say what to fix.
+/// Location wording for the one failure the SDK cannot report itself: the native DLL never loaded,
+/// so no <c>Everything_*</c> call ever ran. The server uses this to say what to fix.
 /// </summary>
 public static class SdkLoadFailure
 {

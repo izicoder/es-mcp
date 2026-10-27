@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace EsSdk;
 
-/// <summary>Human-friendly rendering helpers shared by the CLI and the MCP server.</summary>
+/// <summary>Human-friendly rendering helpers used by the MCP server.</summary>
 public static class Display
 {
     private static readonly string[] Units = ["KB", "MB", "GB", "TB", "PB"];

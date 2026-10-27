@@ -1,8 +1,8 @@
 namespace EsMcp;
 
 /// <summary>
-/// Everything the calling agent sees before its first call: tool name, description, schema and
-/// the server-level usage instructions returned from <c>initialize</c>.
+/// Everything the calling agent sees before its first call: tool names, descriptions, input
+/// schemas, output schemas and the server-level instructions returned from <c>initialize</c>.
 /// Keep these texts front-loaded — clients truncate long descriptions.
 /// </summary>
 internal static class ToolCatalog
@@ -13,6 +13,9 @@ internal static class ToolCatalog
     /// <summary>Legacy name, still accepted on <c>tools/call</c> so older configs keep working.</summary>
     internal const string LegacyName = "search";
 
+    /// <summary>Health probe so an agent can check before searching instead of failing blind.</summary>
+    internal const string StatusName = "everything_status";
+
     internal const string Description =
         "Find any file or folder on this Windows machine instantly - full paths, sizes and dates from the " +
         "voidtools Everything index, with no directory walking. Prefer it over dir, Get-ChildItem, where.exe or " +
@@ -20,17 +23,26 @@ internal static class ToolCatalog
         "listing a directory tree. Query uses Everything syntax: plain words match file names ('report'), " +
         "ext:cs, path:src, dm:today, size:>1gb, wildcards ('report*.pdf'), quotes for spaces or literal paths " +
         "(path:\"C:\\work\\api\"), and regex:true for regular expressions. Space-separated terms are ANDed. " +
-        "The reply header gives the total match count; when it shows fewer rows than the total, page with offset or " +
-        "narrow the query. Read-only and safe to call repeatedly.";
+        "Returns structuredContent with total, returned, offset, hasMore and a results array. When returned is " +
+        "below total, page with offset or narrow the query. Read-only and safe to call repeatedly.";
+
+    internal const string StatusDescription =
+        "Check that Everything search is usable before relying on it: reports whether the Everything SDK loaded, " +
+        "whether voidtools Everything is running, the indexed object count, the SDK version and the DLL path. " +
+        "Call it once when search_files returns an unexpected error or an empty result you cannot explain. " +
+        "Read-only and cheap.";
 
     /// <summary>Short cheatsheet injected into the agent context by <c>initialize</c>.</summary>
     internal const string Instructions =
         """
         es-mcp - instant file search on Windows, backed by the voidtools Everything index.
 
-        Tool: search_files(query, limit?, offset?, regex?, case_sensitive?, whole_word?, match_path?, sort?, filter?)
-        Use it to locate a file or folder by name, extension, size or date, to list a directory tree, or to answer
-        "where is X" anywhere on this machine - instead of dir, Get-ChildItem, where.exe or a filesystem walk.
+        Tools:
+          search_files(query, limit?, offset?, regex?, case_sensitive?, whole_word?, match_path?, sort?, filter?)
+          everything_status() - is Everything running, how many objects are indexed, SDK version and DLL path.
+
+        Use search_files to locate a file or folder by name, extension, size or date, to list a directory tree, or
+        to answer "where is X" anywhere on this machine - instead of dir, Get-ChildItem, where.exe or a filesystem walk.
 
         Query is Everything syntax:
           *.sln              file names ending in .sln
@@ -40,22 +52,23 @@ internal static class ToolCatalog
           "C:\work\api"      quoted literal path   regex:true         regular expression
         Space-separated terms are ANDed; use filter for the narrowing clause instead of one long query.
         folder: matches folder names only - use path:Downloads to search inside a folder. Named sorts
-        are preferred (date_accessed can be slow); an unrecognised sort falls back to path.
+        are preferred (date_accessed can be slow); an unrecognised value falls back to path.
 
-        Reply format: "N total, showing M", then rows of "<size>  <date>  <full path>".
-        If M is smaller than N, page with offset (+= limit) or tighten the query.
+        Replies carry structuredContent: total, returned, offset, hasMore, nextOffset and results
+        (path, name, folder, ext, size, modified, created, accessed). If hasMore is true, page with
+        offset (nextOffset) or tighten the query.
 
-        If a call returns "Everything is not running", ask the user to start voidtools Everything.
-        Read-only: call it as often as needed.
+        If a call fails or returns "Everything is not running", ask the user to start voidtools Everything,
+        or call everything_status for the details.
         """;
 
-    /// <summary>JSON Schema advertised by <c>tools/list</c>.</summary>
-    internal const string Schema =
+    /// <summary>JSON Schema for <c>search_files</c>, advertised by <c>tools/list</c>.</summary>
+    internal const string SearchSchema =
         """
         {
           "name": "search_files",
           "title": "Search files and folders (Everything)",
-          "description": "Find any file or folder on this Windows machine instantly - full paths, sizes and dates from the voidtools Everything index, with no directory walking. Prefer it over dir, Get-ChildItem, where.exe or glob for locating files by name, extension, size or date, for anything outside the open project, and for listing a directory tree. Query uses Everything syntax: plain words match file names ('report'), ext:cs, path:src, dm:today, size:>1gb, wildcards ('report*.pdf'), quotes for spaces or literal paths (path:\"C:\\work\\api\"), and regex:true for regular expressions. Space-separated terms are ANDed. The reply header gives the total match count; when it shows fewer rows than the total, page with offset or narrow the query. Read-only and safe to call repeatedly.",
+          "description": "Find any file or folder on this Windows machine instantly - full paths, sizes and dates from the voidtools Everything index, with no directory walking. Prefer it over dir, Get-ChildItem, where.exe or glob for locating files by name, extension, size or date, for anything outside the open project, and for listing a directory tree. Query uses Everything syntax: plain words match file names ('report'), ext:cs, path:src, dm:today, size:>1gb, wildcards ('report*.pdf'), quotes for spaces or literal paths (path:\"C:\\work\\api\"), and regex:true for regular expressions. Space-separated terms are ANDed. Returns structuredContent with total, returned, offset, hasMore and a results array. When returned is below total, page with offset or narrow the query. Read-only and safe to call repeatedly.",
           "annotations": {
             "title": "Search files and folders (Everything)",
             "readOnlyHint": true,
@@ -81,7 +94,7 @@ internal static class ToolCatalog
                 "type": "integer",
                 "minimum": 0,
                 "default": 0,
-                "description": "Rows to skip, for paging: call again with offset += limit."
+                "description": "Rows to skip, for paging: call again with offset = nextOffset."
               },
               "regex": {
                 "type": "boolean",
@@ -131,6 +144,69 @@ internal static class ToolCatalog
               { "query": "*", "sort": "size_desc", "limit": 10 },
               { "query": "config", "match_path": true, "filter": "path:src" }
             ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "total": { "type": "integer", "description": "Every match for the query, not just this page." },
+              "returned": { "type": "integer", "description": "Rows in this page." },
+              "offset": { "type": "integer", "description": "Rows skipped before this page." },
+              "hasMore": { "type": "boolean", "description": "True when rows after this page exist." },
+              "nextOffset": { "type": ["integer", "null"], "description": "Offset to pass on the next call, or null on the last page." },
+              "results": {
+                "type": "array",
+                "description": "One object per match, in the requested sort order.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": { "type": "string", "description": "Full path." },
+                    "name": { "type": "string", "description": "File or folder name without the directory." },
+                    "folder": { "type": "boolean", "description": "True when the entry is a directory." },
+                    "ext": { "type": ["string", "null"], "description": "Extension without the dot, or null." },
+                    "size": { "type": ["integer", "null"], "description": "Size in bytes, or null for folders." },
+                    "modified": { "type": ["string", "null"], "description": "ISO 8601 local time, or null." },
+                    "created": { "type": ["string", "null"], "description": "ISO 8601 local time, or null." },
+                    "accessed": { "type": ["string", "null"], "description": "ISO 8601 local time, or null." }
+                  },
+                  "required": ["path", "name", "folder", "ext", "size", "modified", "created", "accessed"]
+                }
+              }
+            },
+            "required": ["total", "returned", "offset", "hasMore", "results"]
+          }
+        }
+        """;
+
+    /// <summary>JSON Schema for <c>everything_status</c>.</summary>
+    internal const string StatusSchema =
+        """
+        {
+          "name": "everything_status",
+          "title": "Everything status",
+          "description": "Check that Everything search is usable before relying on it: reports whether the Everything SDK loaded, whether voidtools Everything is running, the indexed object count, the SDK version and the DLL path. Call it once when search_files returns an unexpected error or an empty result you cannot explain. Read-only and cheap.",
+          "annotations": {
+            "title": "Everything status",
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+          },
+          "inputSchema": {
+            "type": "object",
+            "properties": {}
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "ready": { "type": "boolean", "description": "True when searches will work right now." },
+              "sdkLoaded": { "type": "boolean", "description": "True when Everything64.dll loaded." },
+              "databaseLoaded": { "type": "boolean", "description": "True when Everything is running and its index is loaded." },
+              "version": { "type": ["string", "null"], "description": "Everything SDK version, or null." },
+              "sdkPath": { "type": ["string", "null"], "description": "Full path the SDK loaded from, or null." },
+              "totalCount": { "type": "integer", "description": "Objects in the index." },
+              "error": { "type": ["string", "null"], "description": "What to fix when ready is false, or null." }
+            },
+            "required": ["ready", "sdkLoaded", "databaseLoaded", "version", "sdkPath", "totalCount", "error"]
           }
         }
         """;
