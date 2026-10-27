@@ -39,6 +39,31 @@ internal static class ResultFormatter
         return text.ToString().TrimEnd();
     }
 
+    /// <summary>
+    /// One line instead of the table, for replies that already carry the rows in
+    /// <c>structuredContent</c>. Sending both is the most expensive thing a search server can do,
+    /// so the default reply says how many matched and how to page, and nothing more.
+    /// </summary>
+    internal static string Summary(ToolRequest request, SearchResults results)
+    {
+        if (results.Entries.Count == 0)
+        {
+            return results.Total == 0
+                ? NoMatches(request)
+                : OffsetPastEnd(request, results.Total);
+        }
+
+        var offset = (long)request.Options.Offset;
+        var consumed = offset + results.Entries.Count;
+        var text = $"{results.Total} match{(results.Total == 1 ? string.Empty : "es")}, showing {results.Entries.Count}";
+
+        if (offset > 0) text += $" from offset {offset}";
+        if (results.Total > consumed) text += $"; next page offset {consumed}";
+        else text += "; that is all of them";
+
+        return text + ".";
+    }
+
     private static string Header(SearchResults results, uint offset) =>
         results.Total == results.Entries.Count && offset == 0
             ? $"{results.Total} result{(results.Total == 1 ? string.Empty : "s")}"

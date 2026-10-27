@@ -51,7 +51,43 @@ public sealed record SearchOptions
 
     /// <summary>Extra Everything clause appended to the query, e.g. <c>ext:cs folder:src</c>.</summary>
     public string? Filter { get; init; }
+
+    /// <summary>
+    /// Which per-result fields to fetch. Fewer fields means fewer native calls per row and a
+    /// smaller request flag set, so ask for only what you will show.
+    /// </summary>
+    public FileFields Fields { get; init; } = FileFields.All;
 }
+
+/// <summary>Per-result fields a caller wants from the SDK.</summary>
+[Flags]
+public enum FileFields
+{
+    /// <summary>Only the full path and the folder flag.</summary>
+    None = 0,
+
+    /// <summary>Extension without the dot.</summary>
+    Extension = 1,
+
+    /// <summary>Size in bytes.</summary>
+    Size = 2,
+
+    /// <summary>Last write time.</summary>
+    Modified = 4,
+
+    /// <summary>Creation time.</summary>
+    Created = 8,
+
+    /// <summary>Last access time.</summary>
+    Accessed = 16,
+
+    /// <summary>What a search listing needs: extension, size and modified time.</summary>
+    Default = Extension | Size | Modified,
+
+    /// <summary>Everything the SDK can report.</summary>
+    All = Extension | Size | Modified | Created | Accessed,
+}
+
 
 /// <summary>One file or folder matched by a query.</summary>
 public sealed record FileEntry(
@@ -146,8 +182,11 @@ public static class Everything
             Native.Everything_SetSort((uint)options.Sort);
             Native.Everything_SetRequestFlags(
                 Native.ReqFileName | Native.ReqPath | Native.ReqFullPath |
-                Native.ReqExtension | Native.ReqSize |
-                Native.ReqDateCreated | Native.ReqDateModified | Native.ReqDateAccessed);
+                (options.Fields.HasFlag(FileFields.Extension) ? Native.ReqExtension : 0u) |
+                (options.Fields.HasFlag(FileFields.Size) ? Native.ReqSize : 0u) |
+                (options.Fields.HasFlag(FileFields.Created) ? Native.ReqDateCreated : 0u) |
+                (options.Fields.HasFlag(FileFields.Modified) ? Native.ReqDateModified : 0u) |
+                (options.Fields.HasFlag(FileFields.Accessed) ? Native.ReqDateAccessed : 0u));
 
             if (!Native.Everything_QueryW(true))
             {
@@ -172,16 +211,23 @@ public static class Everything
                             i, pinned.AddrOfPinnedObject(), (uint)buffer.Length);
 
                         var path = length > 0 ? new string(buffer, 0, (int)Math.Min(length, (uint)buffer.Length)) : string.Empty;
-                        var extension = Marshal.PtrToStringUni(Native.Everything_GetResultExtensionW(i)) ?? string.Empty;
+                        var extension = options.Fields.HasFlag(FileFields.Extension)
+                            ? Marshal.PtrToStringUni(Native.Everything_GetResultExtensionW(i)) ?? string.Empty
+                            : string.Empty;
 
-                        var size = Native.Everything_GetResultSize(i, out var bytes) ? bytes : 0;
-                        var modified = Native.Everything_GetResultDateModified(i, out var modifiedTime)
+                        var size = options.Fields.HasFlag(FileFields.Size) && Native.Everything_GetResultSize(i, out var bytes)
+                            ? bytes
+                            : 0;
+                        var modified = options.Fields.HasFlag(FileFields.Modified)
+                            && Native.Everything_GetResultDateModified(i, out var modifiedTime)
                             ? ToLocalTime(modifiedTime)
                             : null;
-                        var created = Native.Everything_GetResultDateCreated(i, out var createdTime)
+                        var created = options.Fields.HasFlag(FileFields.Created)
+                            && Native.Everything_GetResultDateCreated(i, out var createdTime)
                             ? ToLocalTime(createdTime)
                             : null;
-                        var accessed = Native.Everything_GetResultDateAccessed(i, out var accessedTime)
+                        var accessed = options.Fields.HasFlag(FileFields.Accessed)
+                            && Native.Everything_GetResultDateAccessed(i, out var accessedTime)
                             ? ToLocalTime(accessedTime)
                             : null;
 

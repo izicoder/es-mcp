@@ -5,7 +5,19 @@ using EsSdk;
 namespace EsMcp;
 
 /// <summary>A validated <c>tools/call</c> payload.</summary>
-internal sealed record ToolRequest(string Query, SearchOptions Options);
+internal sealed record ToolRequest(string Query, SearchOptions Options, OutputFormat Format = OutputFormat.Json);
+
+/// <summary>
+/// How much to send back. <c>json</c> is the default: rows in <c>structuredContent</c> plus a one
+/// line summary, which is the cheapest useful shape for an agent. <c>text</c> sends the table only,
+/// for clients that never read structured content. <c>full</c> adds every field the SDK can report.
+/// </summary>
+internal enum OutputFormat
+{
+    Json,
+    Text,
+    Full,
+}
 
 /// <summary>
 /// Turns the agent's JSON arguments into a <see cref="SearchOptions"/>. Reads leniently on purpose:
@@ -39,6 +51,8 @@ internal static class ToolArguments
             ? (uint)Math.Clamp(requestedLimit.Value, 1d, MaxLimit)
             : (uint)DefaultLimit;
 
+        var format = ReadFormat(arguments);
+
         var options = new SearchOptions
         {
             Limit = limit,
@@ -49,10 +63,31 @@ internal static class ToolArguments
             MatchPath = ReadBool(arguments, "match_path"),
             Sort = ReadSort(arguments),
             Filter = ReadString(arguments, "filter"),
+            // full wants everything; the compact shapes only need size and modified time.
+            Fields = format == OutputFormat.Full ? FileFields.All : FileFields.Size | FileFields.Modified,
         };
 
-        request = new ToolRequest(query.Trim(), options);
+        request = new ToolRequest(query.Trim(), options, format);
         return true;
+    }
+
+    /// <summary>
+    /// <c>format</c>: json (default), text, full. Unknown values fall back to json so a typo never
+    /// costs the caller its results. <c>details:true</c> is accepted as an alias for full.
+    /// </summary>
+    internal static OutputFormat ReadFormat(JsonElement arguments)
+    {
+        if (ReadBool(arguments, "details")) return OutputFormat.Full;
+
+        var raw = ReadString(arguments, "format");
+        if (string.IsNullOrWhiteSpace(raw)) return OutputFormat.Json;
+
+        return raw.Trim().ToLowerInvariant() switch
+        {
+            "text" or "table" => OutputFormat.Text,
+            "full" or "all" or "detailed" => OutputFormat.Full,
+            _ => OutputFormat.Json,
+        };
     }
 
     internal static string? ReadString(JsonElement arguments, string name) =>

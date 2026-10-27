@@ -22,7 +22,16 @@ public class ToolCatalogTests
         var required = Schema.GetProperty("inputSchema").GetProperty("required").EnumerateArray().Select(e => e.GetString()).ToArray();
 
         Assert.Contains("query", required);
-        Assert.Equal(9, Schema.GetProperty("inputSchema").GetProperty("properties").EnumerateObject().Count());
+        Assert.Equal(10, Schema.GetProperty("inputSchema").GetProperty("properties").EnumerateObject().Count());
+    }
+
+    [Fact]
+    public void Format_parameter_offers_the_three_reply_shapes()
+    {
+        var formats = Schema.GetProperty("inputSchema").GetProperty("properties").GetProperty("format")
+            .GetProperty("enum").EnumerateArray().Select(e => e.GetString()).ToArray();
+
+        Assert.Equal("json,text,full", string.Join(",", formats));
     }
 
     [Fact]
@@ -315,11 +324,11 @@ public class OutputSchemaTests
         element.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray();
 
     [Fact]
-    public void Search_payload_matches_the_advertised_output_schema()
+    public void Full_payload_matches_every_row_field_in_the_output_schema()
     {
         var schema = Schema(ToolCatalog.SearchSchema).GetProperty("outputSchema");
-        var request = new ToolRequest("x", new SearchOptions { Limit = 2 });
-        var results = new SearchResults(1, [new FileEntry(@"C:\a\b.txt", false, "txt", 10, DateTime.Now)]);
+        var request = new ToolRequest("x", new SearchOptions { Limit = 2, Fields = EsSdk.FileFields.All }, OutputFormat.Full);
+        var results = new SearchResults(1, [new FileEntry(@"C:\a\b.txt", false, "txt", 10, DateTime.Now, DateTime.Now, DateTime.Now)]);
 
         var payload = Payload(ResultPayload.Build(request, results));
 
@@ -331,6 +340,22 @@ public class OutputSchemaTests
         var declaredRow = schema.GetProperty("properties").GetProperty("results").GetProperty("items");
         var payloadRow = payload.GetProperty("results")[0];
         Assert.Equal(Keys(declaredRow.GetProperty("properties")), Keys(payloadRow));
+    }
+
+    [Fact]
+    public void Default_payload_row_is_the_cheap_shape_and_still_inside_the_schema()
+    {
+        var schema = Schema(ToolCatalog.SearchSchema).GetProperty("outputSchema");
+        var request = new ToolRequest("x", new SearchOptions { Limit = 2 });
+        var results = new SearchResults(1, [new FileEntry(@"C:\a\b.txt", false, "txt", 10, DateTime.Now)]);
+
+        var payload = Payload(ResultPayload.Build(request, results));
+        var declared = Keys(schema.GetProperty("properties").GetProperty("results").GetProperty("items").GetProperty("properties"));
+        var row = Keys(payload.GetProperty("results")[0]);
+
+        // No invented fields, no duplicated name/ext, no created/accessed.
+        Assert.All(row, key => Assert.Contains(key, declared));
+        Assert.Equal(["modified", "path", "size"], row);
     }
 
     [Fact]

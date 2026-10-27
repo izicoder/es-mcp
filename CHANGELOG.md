@@ -3,6 +3,31 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/) and [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.1.0] - 2026-10-28
+
+Cheaper replies, and the numbers to prove it against the alternatives.
+
+### Changed
+
+- **Default replies are 65% smaller.** Rows now carry `path`, `folder`, `size` and `modified` only.
+  `name` and `ext` were already inside `path`; `created` and `accessed` were rarely used and cost
+  about 70 characters per row. Folders omit `size` instead of sending `null`.
+- `modified` is `yyyy-MM-dd HH:mm` local time instead of a full ISO 8601 round-trip timestamp.
+  Still sortable, a third of the characters.
+- The text block of a default reply is a one line summary plus the row count. The rows live in
+  `structuredContent`, so sending them twice was the single most expensive thing this server did.
+- `SearchOptions.Fields` in `EsSdk` selects which per-result fields to fetch. Fewer fields means
+  fewer native calls per row: the default reply no longer asks Everything for created/accessed.
+
+### Added
+
+- `format` on `search_files`: `json` (default, above), `text` (the table only, for clients that do
+  not read structured content) and `full` (every field the SDK reports, including `name`, `ext`,
+  `created` and `accessed`). `details:true` is an alias for `full`.
+- `tools/compare.mjs`: measures cold start, time to first result, warm p50/p95 and payload size
+  against other MCP file-search servers on the same machine and index.
+- `tools/charts.mjs` and the two charts in `docs/`, generated from `tools/bench-results.json`.
+
 ## [2.0.0] - 2026-10-28
 
 The project is now an MCP server only, aimed at AI agents.

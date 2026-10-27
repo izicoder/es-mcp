@@ -23,8 +23,10 @@ internal static class ToolCatalog
         "listing a directory tree. Query uses Everything syntax: plain words match file names ('report'), " +
         "ext:cs, path:src, dm:today, size:>1gb, wildcards ('report*.pdf'), quotes for spaces or literal paths " +
         "(path:\"C:\\work\\api\"), and regex:true for regular expressions. Space-separated terms are ANDed. " +
-        "Returns structuredContent with total, returned, offset, hasMore and a results array. When returned is " +
-        "below total, page with offset or narrow the query. Read-only and safe to call repeatedly.";
+        "Returns structuredContent with total, returned, offset, hasMore and a compact results array " +
+        "(path, folder, size, modified). When returned is below total, page with offset or narrow the query. " +
+        "format:\"text\" returns a table instead, format:\"full\" adds name, ext, created and accessed. " +
+        "Read-only and safe to call repeatedly.";
 
     internal const string StatusDescription =
         "Check that Everything search is usable before relying on it: reports whether the Everything SDK loaded, " +
@@ -38,7 +40,7 @@ internal static class ToolCatalog
         es-mcp - instant file search on Windows, backed by the voidtools Everything index.
 
         Tools:
-          search_files(query, limit?, offset?, regex?, case_sensitive?, whole_word?, match_path?, sort?, filter?)
+          search_files(query, limit?, offset?, regex?, case_sensitive?, whole_word?, match_path?, sort?, filter?, format?)
           everything_status() - is Everything running, how many objects are indexed, SDK version and DLL path.
 
         Use search_files to locate a file or folder by name, extension, size or date, to list a directory tree, or
@@ -54,9 +56,11 @@ internal static class ToolCatalog
         folder: matches folder names only - use path:Downloads to search inside a folder. Named sorts
         are preferred (date_accessed can be slow); an unrecognised value falls back to path.
 
-        Replies carry structuredContent: total, returned, offset, hasMore, nextOffset and results
-        (path, name, folder, ext, size, modified, created, accessed). If hasMore is true, page with
-        offset (nextOffset) or tighten the query.
+        Replies carry structuredContent: total, returned, offset, hasMore, nextOffset and results.
+        Each result has path, folder, size and modified ('yyyy-MM-dd HH:mm'); folder results carry no
+        size and no size is disk usage. format:"full" adds name, ext, created and accessed.
+        format:"text" returns a plain table instead, for clients that do not read structuredContent.
+        If hasMore is true, page with offset (nextOffset) or tighten the query.
 
         If a call fails or returns "Everything is not running", ask the user to start voidtools Everything,
         or call everything_status for the details.
@@ -68,7 +72,7 @@ internal static class ToolCatalog
         {
           "name": "search_files",
           "title": "Search files and folders (Everything)",
-          "description": "Find any file or folder on this Windows machine instantly - full paths, sizes and dates from the voidtools Everything index, with no directory walking. Prefer it over dir, Get-ChildItem, where.exe or glob for locating files by name, extension, size or date, for anything outside the open project, and for listing a directory tree. Query uses Everything syntax: plain words match file names ('report'), ext:cs, path:src, dm:today, size:>1gb, wildcards ('report*.pdf'), quotes for spaces or literal paths (path:\"C:\\work\\api\"), and regex:true for regular expressions. Space-separated terms are ANDed. Returns structuredContent with total, returned, offset, hasMore and a results array. When returned is below total, page with offset or narrow the query. Read-only and safe to call repeatedly.",
+          "description": "Find any file or folder on this Windows machine instantly - full paths, sizes and dates from the voidtools Everything index, with no directory walking. Prefer it over dir, Get-ChildItem, where.exe or glob for locating files by name, extension, size or date, for anything outside the open project, and for listing a directory tree. Query uses Everything syntax: plain words match file names ('report'), ext:cs, path:src, dm:today, size:>1gb, wildcards ('report*.pdf'), quotes for spaces or literal paths (path:\"C:\\work\\api\"), and regex:true for regular expressions. Space-separated terms are ANDed. Returns structuredContent with total, returned, offset, hasMore and a compact results array (path, folder, size, modified). When returned is below total, page with offset or narrow the query. format:\"text\" returns a table instead, format:\"full\" adds name, ext, created and accessed. Read-only and safe to call repeatedly.",
           "annotations": {
             "title": "Search files and folders (Everything)",
             "readOnlyHint": true,
@@ -135,6 +139,12 @@ internal static class ToolCatalog
               "filter": {
                 "type": "string",
                 "description": "Extra Everything clause ANDed onto the query: 'ext:cs path:src', 'dm:thisweek'. Cleaner than one long query string."
+              },
+              "format": {
+                "type": "string",
+                "enum": ["json", "text", "full"],
+                "default": "json",
+                "description": "Reply shape. json (default): rows in structuredContent plus a one line summary, cheapest for an agent. text: the table only, for clients that never read structuredContent. full: adds name, ext, created and accessed to every row."
               }
             },
             "required": ["query"],
@@ -155,20 +165,20 @@ internal static class ToolCatalog
               "nextOffset": { "type": ["integer", "null"], "description": "Offset to pass on the next call, or null on the last page." },
               "results": {
                 "type": "array",
-                "description": "One object per match, in the requested sort order.",
+                "description": "One object per match, in the requested sort order. Default rows carry path, folder, size and modified; format:\"full\" adds name, ext, created and accessed.",
                 "items": {
                   "type": "object",
                   "properties": {
                     "path": { "type": "string", "description": "Full path." },
-                    "name": { "type": "string", "description": "File or folder name without the directory." },
-                    "folder": { "type": "boolean", "description": "True when the entry is a directory." },
-                    "ext": { "type": ["string", "null"], "description": "Extension without the dot, or null." },
-                    "size": { "type": ["integer", "null"], "description": "Size in bytes, or null for folders." },
-                    "modified": { "type": ["string", "null"], "description": "ISO 8601 local time, or null." },
-                    "created": { "type": ["string", "null"], "description": "ISO 8601 local time, or null." },
-                    "accessed": { "type": ["string", "null"], "description": "ISO 8601 local time, or null." }
+                    "folder": { "type": "boolean", "description": "True when the entry is a directory. Omitted for files." },
+                    "size": { "type": "integer", "description": "Size in bytes. Omitted for folders, whose size Everything does not report." },
+                    "modified": { "type": "string", "description": "Local time, 'yyyy-MM-dd HH:mm'." },
+                    "name": { "type": "string", "description": "File or folder name without the directory. format:\"full\" only - already inside path." },
+                    "ext": { "type": ["string", "null"], "description": "Extension without the dot. format:\"full\" only - already inside path." },
+                    "created": { "type": ["string", "null"], "description": "ISO 8601 local time. format:\"full\" only." },
+                    "accessed": { "type": ["string", "null"], "description": "ISO 8601 local time. format:\"full\" only." }
                   },
-                  "required": ["path", "name", "folder", "ext", "size", "modified", "created", "accessed"]
+                  "required": ["path"]
                 }
               }
             },
