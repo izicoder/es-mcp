@@ -39,6 +39,16 @@ public class ToolCatalogTests
     }
 
     [Fact]
+    public void Schema_advertises_the_type_sort()
+    {
+        var sorts = Schema.GetProperty("inputSchema").GetProperty("properties").GetProperty("sort")
+            .GetProperty("enum").EnumerateArray().Select(e => e.GetString()).ToArray();
+
+        Assert.Contains("type", sorts);
+        Assert.Contains("type_desc", sorts);
+    }
+
+    [Fact]
     public void Tools_are_advertised_as_read_only()
     {
         var annotations = Schema.GetProperty("annotations");
@@ -160,6 +170,9 @@ public class ToolArgumentsTests
     [InlineData("date-modified", SortOrder.DateModified)]
     [InlineData("NAME", SortOrder.Name)]
     [InlineData("ext", SortOrder.Extension)]
+    [InlineData("type", SortOrder.Type)]
+    [InlineData("type_desc", SortOrder.TypeDescending)]
+    [InlineData("9", SortOrder.Type)]
     [InlineData("6", SortOrder.SizeDescending)]
     [InlineData("nonsense", SortOrder.Path)]
     public void Reads_sort_names_and_constants(string sort, SortOrder expected)

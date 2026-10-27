@@ -50,12 +50,16 @@ es-cli <query> [options]
       --whole-word     match whole words only
       --path           match the full path, not just the file name
       --sort ORDER     name|name-desc|path|path-desc|size|size-desc|extension|
-                       date-modified|date-modified-desc|date-created|date-created-desc|
-                       date-accessed|date-accessed-desc|none  (default: path)
+                       extension-desc|type|type-desc|date-modified|date-modified-desc|
+                       date-created|date-created-desc|date-accessed|date-accessed-desc|
+                       none  (default: path)
       --json           one JSON object per result (JSON Lines)
   -h, --help           help
   -v, --version        version
 ```
+
+`--limit=10` works the same as `--limit 10`, and `--` ends option parsing so a query can
+start with `-`: `es-cli -- -draft`.
 
 Query syntax is Everything's own: `ext:cs`, `folder:src`, `dm:today`, `size:>1gb`, wildcards, and so on.
 
@@ -78,7 +82,7 @@ E:\work\reports\q2.pdf
 {"path":"E:\\work\\api\\Api.sln","name":"Api.sln","folder":false,"ext":"sln","size":3784,"modified":"2026-01-08T11:20:13.4412701+03:00"}
 ```
 
-Exit codes: `0` success, `1` bad usage, `2` Everything SDK error (usually: Everything is not running).
+Exit codes: `0` success, `1` bad usage, `2` Everything SDK error (Everything not running, or `Everything64.dll` missing/unloadable).
 
 ## es-mcp
 
@@ -112,7 +116,7 @@ It exposes one tool, `search_files` (the pre-1.2 name `search` is still accepted
 | `case_sensitive` | boolean | false | match case |
 | `whole_word` | boolean | false | whole words only |
 | `match_path` | boolean | false | match the full path, not just the name |
-| `sort` | string | `path` | name, path, size, extension, date_modified, date_created, date_accessed (+ `_desc`), `none`, or a numeric SDK constant; `sort_by` is an alias |
+| `sort` | string | `path` | name, path, size, extension, type, date_modified, date_created, date_accessed (+ `_desc`), `none`, or a numeric SDK constant; `sort_by` is an alias |
 | `filter` | string | — | extra clause ANDed onto the query, e.g. `ext:cs path:src` |
 
 Results come back as a compact table:

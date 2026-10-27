@@ -55,11 +55,61 @@ public class CommandLineTests
     [InlineData("size", SortOrder.Size)]
     [InlineData("size-desc", SortOrder.SizeDescending)]
     [InlineData("date-modified-desc", SortOrder.DateModifiedDescending)]
+    [InlineData("type", SortOrder.Type)]
+    [InlineData("type-desc", SortOrder.TypeDescending)]
     [InlineData("NAME", SortOrder.Name)]
     [InlineData("none", SortOrder.None)]
     public void Parses_sort_names(string name, SortOrder expected)
     {
         Assert.Equal(expected, CommandLine.Parse(["x", "--sort", name])!.Sort);
+    }
+
+    [Theory]
+    [InlineData("--limit=10", 10u)]
+    [InlineData("--limit=1000", 1000u)]
+    public void Parses_attached_limit(string arg, uint expected)
+    {
+        Assert.Equal(expected, CommandLine.Parse(["x", arg])!.Limit);
+    }
+
+    [Fact]
+    public void Parses_attached_offset_and_sort()
+    {
+        var options = CommandLine.Parse(["x", "--offset=25", "--sort=type-desc"])!;
+
+        Assert.Equal(25u, options.Offset);
+        Assert.Equal(SortOrder.TypeDescending, options.Sort);
+    }
+
+    [Fact]
+    public void Rejects_an_attached_value_on_a_flag()
+    {
+        var error = Assert.Throws<CommandLineException>(() => CommandLine.Parse(["x", "--json=true"]));
+
+        Assert.Contains("does not take a value", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void End_of_options_lets_a_query_start_with_a_dash()
+    {
+        var options = CommandLine.Parse(["--", "-draft", "ext:md"])!;
+
+        Assert.Equal("-draft ext:md", options.Query);
+    }
+
+    [Fact]
+    public void Options_after_end_of_options_are_query_text()
+    {
+        var options = CommandLine.Parse(["x", "--", "--limit", "5"])!;
+
+        Assert.Equal("x --limit 5", options.Query);
+        Assert.Equal(50u, options.Limit);
+    }
+
+    [Fact]
+    public void End_of_options_without_a_query_is_still_rejected()
+    {
+        Assert.Throws<CommandLineException>(() => CommandLine.Parse(["--"]));
     }
 
     [Fact]
@@ -109,6 +159,17 @@ public class CommandLineTests
     {
         Assert.Throws<CommandLineException>(() => CommandLine.Parse(["-n", "5"]));
         Assert.Throws<CommandLineException>(() => CommandLine.Parse([]));
+    }
+}
+
+public class ExitCodeTests
+{
+    [Fact]
+    public void Documented_exit_codes_stay_stable()
+    {
+        Assert.Equal(0, Program.ExitOk);
+        Assert.Equal(1, Program.ExitUsage);
+        Assert.Equal(2, Program.ExitSdkError);
     }
 }
 

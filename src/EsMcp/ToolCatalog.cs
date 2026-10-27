@@ -111,6 +111,7 @@ internal static class ToolCatalog
                   "path", "path_desc",
                   "size", "size_desc",
                   "extension", "extension_desc",
+                  "type", "type_desc",
                   "date_modified", "date_modified_desc",
                   "date_created", "date_created_desc",
                   "date_accessed", "date_accessed_desc",

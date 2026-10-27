@@ -1,6 +1,7 @@
 // es-cli — command-line search over the Everything index (voidtools Everything 1.4+).
 using System.Globalization;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using EsSdk;
 
@@ -8,9 +9,9 @@ namespace EsCli;
 
 internal static class Program
 {
-    private const int ExitOk = 0;
-    private const int ExitUsage = 1;
-    private const int ExitSdkError = 2;
+    internal const int ExitOk = 0;
+    internal const int ExitUsage = 1;
+    internal const int ExitSdkError = 2;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -20,6 +21,8 @@ internal static class Program
 
     private static int Main(string[] args)
     {
+        UseUtf8Output();
+
         try
         {
             var options = CommandLine.Parse(args);
@@ -37,6 +40,11 @@ internal static class Program
             Console.Error.WriteLine(CommandLine.Help);
             return ExitUsage;
         }
+        catch (Exception ex) when (SdkLoadFailure.IsLoadFailure(ex))
+        {
+            Console.Error.WriteLine($"error: {SdkLoadFailure.Describe(ex)}");
+            return ExitSdkError;
+        }
         catch (EverythingException ex)
         {
             Console.Error.WriteLine($"error: {ex.Message}");
@@ -46,6 +54,19 @@ internal static class Program
         {
             Console.Error.WriteLine($"error: {ex.Message}");
             return ExitUsage;
+        }
+    }
+
+    /// <summary>Print non-ASCII paths correctly instead of through the console code page.</summary>
+    private static void UseUtf8Output()
+    {
+        try
+        {
+            Console.OutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        }
+        catch (Exception ex) when (ex is IOException or PlatformNotSupportedException or System.Security.SecurityException)
+        {
+            // A redirected or headless console may refuse the change; keep the default then.
         }
     }
 
@@ -127,11 +148,15 @@ internal static class CommandLine
               --whole-word     match whole words only
               --path           match against the full path, not just the file name
               --sort ORDER     name|name-desc|path|path-desc|size|size-desc|extension|
-                               date-modified|date-modified-desc|date-created|date-created-desc|
-                               date-accessed|date-accessed-desc|none  (default: path)
+                               extension-desc|type|type-desc|date-modified|date-modified-desc|
+                               date-created|date-created-desc|date-accessed|date-accessed-desc|none
+                               (default: path)
               --json           one JSON object per result (JSON Lines)
           -h, --help           show this help
           -v, --version        show the version
+
+        --limit=10, --offset=20 and --sort=size are equivalent to the spaced forms.
+        -- ends option parsing, so a query may start with "-" (es-cli -- -draft).
 
         exit codes: 0 ok, 1 bad usage, 2 Everything SDK error (usually: Everything not running)
 
@@ -155,6 +180,8 @@ internal static class CommandLine
         ["size-desc"] = SortOrder.SizeDescending,
         ["extension"] = SortOrder.Extension,
         ["extension-desc"] = SortOrder.ExtensionDescending,
+        ["type"] = SortOrder.Type,
+        ["type-desc"] = SortOrder.TypeDescending,
         ["date-created"] = SortOrder.DateCreated,
         ["date-created-desc"] = SortOrder.DateCreatedDescending,
         ["date-modified"] = SortOrder.DateModified,
@@ -162,6 +189,12 @@ internal static class CommandLine
         ["date-accessed"] = SortOrder.DateAccessed,
         ["date-accessed-desc"] = SortOrder.DateAccessedDescending,
         ["none"] = SortOrder.None,
+    };
+
+    /// <summary>Options whose value may be attached with <c>=</c> instead of a following argument.</summary>
+    private static readonly HashSet<string> ValueOptions = new(StringComparer.Ordinal)
+    {
+        "-n", "--limit", "-o", "--offset", "--sort",
     };
 
     /// <summary>Parse argv. Returns <c>null</c> when the invocation was fully handled (help/version).</summary>
@@ -176,24 +209,54 @@ internal static class CommandLine
         var matchCase = false;
         var wholeWord = false;
         var matchPath = false;
+        var endOfOptions = false;
 
         for (var i = 0; i < args.Length; i++)
         {
             var arg = args[i];
-            switch (arg)
+
+            if (endOfOptions)
+            {
+                query = AppendQuery(query, arg);
+                continue;
+            }
+
+            if (arg == "--")
+            {
+                endOfOptions = true;
+                continue;
+            }
+
+            // Long options accept --name=value as well as --name value.
+            var option = arg;
+            string? inlineValue = null;
+            if (arg.StartsWith("--", StringComparison.Ordinal))
+            {
+                var separator = arg.IndexOf('=');
+                if (separator > 2)
+                {
+                    option = arg[..separator];
+                    inlineValue = arg[(separator + 1)..];
+                }
+            }
+
+            if (inlineValue is not null && !ValueOptions.Contains(option))
+                throw new CommandLineException($"{option} does not take a value");
+
+            switch (option)
             {
                 case "-n":
                 case "--limit":
-                    limit = ParseUInt(args, ref i, arg);
+                    limit = ParseUInt(args, ref i, option, inlineValue);
                     break;
 
                 case "-o":
                 case "--offset":
-                    offset = ParseUInt(args, ref i, arg);
+                    offset = ParseUInt(args, ref i, option, inlineValue);
                     break;
 
                 case "--sort":
-                    var name = NextValue(args, ref i, arg);
+                    var name = NextValue(args, ref i, option, inlineValue);
                     if (!SortNames.TryGetValue(name, out sort))
                         throw new CommandLineException($"unknown sort order: {name}");
                     break;
@@ -231,11 +294,10 @@ internal static class CommandLine
                     return null;
 
                 default:
-                    if (arg.StartsWith('-') && arg != "-")
-                        throw new CommandLineException($"unknown option: {arg}");
+                    if (option.StartsWith('-') && option != "-")
+                        throw new CommandLineException($"unknown option: {option}");
 
-                    // Unquoted multi-word queries are re-joined with single spaces.
-                    query = query is null ? arg : $"{query} {arg}";
+                    query = AppendQuery(query, arg);
                     break;
             }
         }
@@ -249,15 +311,20 @@ internal static class CommandLine
         return new CommandLineOptions(query, limit, offset, regex, matchCase, wholeWord, matchPath, json, sort);
     }
 
-    private static string NextValue(string[] args, ref int index, string option)
+    /// <summary>Unquoted multi-word queries are re-joined with single spaces.</summary>
+    private static string AppendQuery(string? query, string arg) =>
+        query is null ? arg : $"{query} {arg}";
+
+    private static string NextValue(string[] args, ref int index, string option, string? inlineValue)
     {
+        if (inlineValue is not null) return inlineValue;
         if (++index >= args.Length) throw new CommandLineException($"{option} requires a value");
         return args[index];
     }
 
-    private static uint ParseUInt(string[] args, ref int index, string option)
+    private static uint ParseUInt(string[] args, ref int index, string option, string? inlineValue)
     {
-        var raw = NextValue(args, ref index, option);
+        var raw = NextValue(args, ref index, option, inlineValue);
         return uint.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out var value)
             ? value
             : throw new CommandLineException($"{option} requires a non-negative number, got: {raw}");
