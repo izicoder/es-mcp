@@ -8,7 +8,8 @@
 #   powershell -File tools\winget-manifest.ps1 -Version 2.2.0 -Zip .\es-mcp-win-x64-selfcontained.zip
 #
 # Then submit the three files to https://github.com/microsoft/winget-pkgs under
-# manifests/i/izicoder/es-mcp/<version>/ (see the printed instructions).
+# manifests/i/izicoder/es-mcp/<version>/. A first version goes up with `wingetcreate submit`;
+# later versions go up with `wingetcreate update`, which is printed at the end.
 
 [CmdletBinding()]
 param(
@@ -125,5 +126,7 @@ Write-Host "Wrote 3 manifests to $OutDir"
 Write-Host "  $asset  $size bytes  sha256 $hash"
 Write-Host ""
 Write-Host "Submit them (one time setup: fork winget-pkgs, accept the CLA on the first PR):"
-Write-Host "  wingetcreate submit --token <github-token> $OutDir"
+Write-Host "  first version    wingetcreate submit -p `"New package: izicoder.es-mcp version $Version`" -t <token> $OutDir"
+Write-Host "  later versions   wingetcreate update izicoder.es-mcp -v $Version -u $url -t <token> --submit"
+Write-Host ""
 Write-Host "or copy the files to manifests/i/izicoder/es-mcp/$Version/ in your fork and open a PR."
