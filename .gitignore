@@ -12,6 +12,8 @@ out/
 .codegraph/
 .playwright-mcp/
 
-# Third-party / machine-specific binaries are never committed
+# Machine-specific binaries are never committed.
+# third_party/Everything64.dll is the one exception: it ships with every release.
 Everything64.dll
+!third_party/Everything64.dll
 *.pdb

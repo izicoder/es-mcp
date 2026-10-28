@@ -18,8 +18,7 @@ public static class SdkLoadFailure
         exception is BadImageFormatException
             ? $"{DllName} could not be loaded: it is not a 64-bit Windows library. Install 64-bit Everything, " +
               "or point EVERYTHING_SDK_PATH at the 64-bit DLL."
-            : $"{DllName} was not found. Everything (voidtools) must be installed, with the SDK DLL " +
-              "reachable in one of these ways: EVERYTHING_SDK_PATH set to the DLL or its folder, the DLL " +
-              "next to this executable, or the Everything install folder (e.g. C:\\Program Files\\Everything). " +
-              "The DLL ships with Everything and is not bundled here.";
+            : $"{DllName} was not found. It normally sits next to this executable: reinstall the release if it " +
+              "is missing. Otherwise set EVERYTHING_SDK_PATH to the DLL or its folder, or install Everything " +
+              "(voidtools) so its install folder is found. Everything must also be running.";
 }

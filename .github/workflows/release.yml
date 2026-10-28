@@ -24,13 +24,40 @@ jobs:
       - name: Test
         run: dotnet test -c Release --nologo --no-build
 
-      - name: Publish
-        run: dotnet publish src/EsMcp -c Release -o out/es-mcp --nologo
+      # Small download for machines that already have the .NET 10 runtime.
+      # No pdb or xml docs in release zips; they are noise for an end user.
+      - name: Publish (framework-dependent)
+        run: dotnet publish src/EsMcp -c Release -o out/es-mcp --nologo -p:DebugType=none -p:DebugSymbols=false -p:GenerateDocumentationFile=false
+
+      # Big download that runs anywhere: no .NET runtime needed. The default install path.
+      - name: Publish (self-contained)
+        run: dotnet publish src/EsMcp -c Release -o out/es-mcp-selfcontained --nologo -p:SelfContained=true -p:DebugType=none -p:DebugSymbols=false -p:GenerateDocumentationFile=false
+
+      - name: Check the SDK DLL ships in both builds
+        run: |
+          foreach ($dir in @('out/es-mcp', 'out/es-mcp-selfcontained')) {
+            if (-not (Test-Path "$dir/Everything64.dll")) { throw "$dir is missing Everything64.dll" }
+          }
 
       - name: Zip
-        run: Compress-Archive -Path out/es-mcp/* -DestinationPath es-mcp-win-x64.zip
+        run: |
+          Compress-Archive -Path out/es-mcp/* -DestinationPath es-mcp-win-x64.zip
+          Compress-Archive -Path out/es-mcp-selfcontained/* -DestinationPath es-mcp-win-x64-selfcontained.zip
+
+      # winget manifests need the sha256 of the self-contained zip, so publish it next to the assets.
+      - name: Checksums
+        run: |
+          $lines = Get-ChildItem *.zip | ForEach-Object {
+            $hash = (Get-FileHash $_.Name -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          }
+          $lines | Set-Content -Path SHA256SUMS.txt -Encoding ascii
+          $lines
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: es-mcp-win-x64.zip
+          files: |
+            es-mcp-win-x64.zip
+            es-mcp-win-x64-selfcontained.zip
+            SHA256SUMS.txt
           generate_release_notes: true

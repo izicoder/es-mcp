@@ -3,6 +3,28 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/) and [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.2.0] - 2026-10-28
+
+Installs without hunting for the SDK DLL, and ships the artefacts winget needs.
+
+### Added
+
+- **`Everything64.dll` ships with the server.** It sits next to `es-mcp.exe` in every download, so a
+  fresh install searches immediately instead of failing with a missing-library error. Anyone with a
+  copy of their own can still pin it with `EVERYTHING_SDK_PATH`. See `third_party/NOTICE.md`.
+- **A self-contained zip.** `es-mcp-win-x64-selfcontained.zip` (~32 MB) needs no .NET runtime, so it
+  is the download for anyone who does not already have .NET 10. The framework-dependent zip stays
+  under 1 MB.
+- `SHA256SUMS.txt` in every release.
+- `tools/winget-manifest.ps1`: builds the three winget manifests from the published asset and its
+  checksum, so the sizes and hashes are never hand-typed. The output passes `winget validate`.
+
+### Changed
+
+- The missing-DLL message now says the DLL ships with the release, and treats
+  `EVERYTHING_SDK_PATH` and an Everything install as fallbacks rather than the expected setup.
+- Release zips no longer contain `.pdb` files or the XML doc file.
+
 ## [2.1.0] - 2026-10-28
 
 Cheaper replies, and the numbers to prove it against the alternatives.

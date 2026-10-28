@@ -49,17 +49,35 @@ differences that show up in use are startup (about 1.5 seconds per agent session
 
 Measured on an i5-3570, 16 GB RAM, Windows x64, Everything indexing 1.7M objects.
 
+## Install
+
+Grab a zip from [Releases](https://github.com/izicoder/es-mcp/releases/latest), unzip it anywhere,
+and point your MCP client at `es-mcp.exe`:
+
+| Download | Needs | Size |
+| --- | --- | --- |
+| `es-mcp-win-x64-selfcontained.zip` | nothing else | ~32 MB |
+| `es-mcp-win-x64.zip` | .NET 10 runtime | under 1 MB |
+
+The Everything SDK DLL is inside both zips, next to the exe, so there is nothing else to fetch.
+Each release also publishes `SHA256SUMS.txt`.
+
+Then [register with an MCP client](#register-with-an-mcp-client).
+
 ## Requirements
 
 - Windows x64
-- [.NET 10 runtime](https://dotnet.microsoft.com/download) (or build self-contained, see below)
 - [Everything](https://www.voidtools.com/) installed and **running in the background**
-- `Everything64.dll`, the SDK shipped with Everything, reachable in one of these ways:
-  1. `EVERYTHING_SDK_PATH` set to the DLL or to the folder containing it
-  2. sitting next to `es-mcp.exe`
-  3. the Everything install folder (found automatically, e.g. `C:\Program Files\Everything\`)
+- .NET 10 runtime, unless you use the self-contained zip
 
-The DLL is deliberately **not** bundled here — grab it from your own Everything install.
+`Everything64.dll` is loaded from the first of these that exists:
+
+1. `EVERYTHING_SDK_PATH`, set to the DLL or to the folder containing it
+2. the folder holding `es-mcp.exe` (the copy bundled with each release)
+3. your Everything install folder (e.g. `C:\Program Files\Everything\`)
+4. `PATH`
+
+Only the first one needs you to do anything, and only if you want to pin a different SDK build.
 
 ## Build
 
@@ -69,8 +87,9 @@ dotnet test
 dotnet publish src/EsMcp -c Release -o out/es-mcp
 ```
 
-`dotnet publish` produces a framework-dependent single-file executable. For a machine without .NET installed,
-add `-p:SelfContained=true`.
+`dotnet publish` produces a framework-dependent single-file executable, with `Everything64.dll`
+copied from `third_party/` next to it. For a machine without .NET installed, add
+`-p:SelfContained=true`.
 
 ## Register with an MCP client
 
@@ -209,9 +228,11 @@ the biggest thing on this drive", "list every `.sln` under `E:\work`".
 src/EsSdk/            Everything SDK interop (native bindings, DLL resolution, search and status API)
 src/EsMcp/            MCP stdio server (protocol loop, tool catalog, argument parsing, result formatting)
 tests/EsMcp.Tests/    xunit tests for the protocol, schemas, argument handling and result messages
+third_party/          the bundled Everything64.dll and its notice
 tools/bench.mjs       round-trip latency against a published es-mcp.exe
 tools/compare.mjs     the same, head to head with other MCP file-search servers, plus payload size
 tools/charts.mjs      turns bench-results.json into the two SVGs in docs/
+tools/winget-manifest.ps1  builds the three winget manifests for a published release
 docs/                 generated charts, plus bench-summary.json
 ```
 
