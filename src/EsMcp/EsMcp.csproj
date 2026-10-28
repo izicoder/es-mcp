@@ -15,6 +15,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Ships next to the exe. DllResolver checks EVERYTHING_SDK_PATH first, then the app folder. -->
+    <Content Include="..\..\third_party\Everything64.dll"
+             Link="Everything64.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="EsMcp.Tests" />
   </ItemGroup>
 
