@@ -51,15 +51,18 @@ Measured on an i5-3570, 16 GB RAM, Windows x64, Everything indexing 1.7M objects
 
 ## Install
 
-Grab a zip from [Releases](https://github.com/izicoder/es-mcp/releases/latest), unzip it anywhere,
-and point your MCP client at `es-mcp.exe`:
+Open `es-mcp-<version>.mcpb` from [Releases](https://github.com/izicoder/es-mcp/releases/latest) if
+your client can install MCP bundles — Claude Desktop can. The bundle carries the server, the .NET
+runtime and the SDK DLL, so the app unpacks it and starts it with no config editing.
+
+Every other client wants a path to `es-mcp.exe`, so unzip one of these anywhere:
 
 | Download | Needs | Size |
 | --- | --- | --- |
 | `es-mcp-win-x64-selfcontained.zip` | nothing else | ~32 MB |
 | `es-mcp-win-x64.zip` | .NET 10 runtime | under 1 MB |
 
-The Everything SDK DLL is inside both zips, next to the exe, so there is nothing else to fetch.
+The Everything SDK DLL is inside every download, next to the exe, so there is nothing else to fetch.
 Each release also publishes `SHA256SUMS.txt`.
 
 Then [register with an MCP client](#register-with-an-mcp-client).
@@ -68,7 +71,7 @@ Then [register with an MCP client](#register-with-an-mcp-client).
 
 - Windows x64
 - [Everything](https://www.voidtools.com/) installed and **running in the background**
-- .NET 10 runtime, unless you use the self-contained zip
+- .NET 10 runtime, unless you use the self-contained zip or the `.mcpb` bundle
 
 `Everything64.dll` is loaded from the first of these that exists:
 
@@ -93,7 +96,9 @@ copied from `third_party/` next to it. For a machine without .NET installed, add
 
 ## Register with an MCP client
 
-`dotnet publish` writes `out/es-mcp/es-mcp.exe`. Copy it wherever you keep tools, then point your client at it.
+If you installed the `.mcpb` bundle, the client is already wired up, so skip to the tool docs.
+
+Otherwise: `dotnet publish` writes `out/es-mcp/es-mcp.exe`. Copy it wherever you keep tools, then point your client at it.
 For opencode, in `~/.config/opencode/opencode.json`:
 
 ```json
@@ -233,6 +238,7 @@ tools/bench.mjs       round-trip latency against a published es-mcp.exe
 tools/compare.mjs     the same, head to head with other MCP file-search servers, plus payload size
 tools/charts.mjs      turns bench-results.json into the two SVGs in docs/
 tools/winget-manifest.ps1  builds the three winget manifests for a published release
+tools/mcpb.ps1        builds the Claude Desktop bundle from a self-contained publish
 docs/                 generated charts, plus bench-summary.json
 ```
 
