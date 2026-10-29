@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/) and [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **`.mcpb` bundle in every release.** `es-mcp-<version>.mcpb` is a zip with a `manifest.json` and
+  the self-contained server inside, so Claude Desktop and other MCPB-aware apps install it with a
+  double-click and no .NET runtime. `tools/mcpb.ps1` builds it from the self-contained publish
+  output, writes the manifest, and refuses to finish unless the archive unpacks to the layout the
+  MCPB spec expects. The manifest passes `mcpb validate`.
+
 ## [2.2.0] - 2026-10-28
 
 Installs without hunting for the SDK DLL, and ships the artefacts winget needs.

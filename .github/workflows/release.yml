@@ -39,15 +39,27 @@ jobs:
             if (-not (Test-Path "$dir/Everything64.dll")) { throw "$dir is missing Everything64.dll" }
           }
 
+      # One-click install for Claude Desktop and other MCPB-aware apps. Reuses the self-contained
+      # publish above, so the bundle needs no .NET runtime on the user's machine.
+      - name: Build the MCP bundle
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            $version = (Select-String -Path Directory.Build.props -Pattern '<Version>([^<]+)</Version>').Matches[0].Groups[1].Value
+          }
+          Write-Host "Bundle version: $version"
+          ./tools/mcpb.ps1 -Version $version -SourceDir out/es-mcp-selfcontained
+
       - name: Zip
         run: |
           Compress-Archive -Path out/es-mcp/* -DestinationPath es-mcp-win-x64.zip
           Compress-Archive -Path out/es-mcp-selfcontained/* -DestinationPath es-mcp-win-x64-selfcontained.zip
+          Copy-Item out/mcpb/*.mcpb .
 
       # winget manifests need the sha256 of the self-contained zip, so publish it next to the assets.
       - name: Checksums
         run: |
-          $lines = Get-ChildItem *.zip | ForEach-Object {
+          $lines = Get-ChildItem *.zip, *.mcpb | ForEach-Object {
             $hash = (Get-FileHash $_.Name -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $($_.Name)"
           }
@@ -59,5 +71,6 @@ jobs:
           files: |
             es-mcp-win-x64.zip
             es-mcp-win-x64-selfcontained.zip
+            es-mcp-*.mcpb
             SHA256SUMS.txt
           generate_release_notes: true
