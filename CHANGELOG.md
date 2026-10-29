@@ -3,7 +3,9 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/) and [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.3.0] - 2026-10-29
+
+One double-click installs the server, the runtime and the SDK DLL.
 
 ### Added
 
