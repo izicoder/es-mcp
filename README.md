@@ -239,6 +239,7 @@ tools/compare.mjs     the same, head to head with other MCP file-search servers,
 tools/charts.mjs      turns bench-results.json into the two SVGs in docs/
 tools/winget-manifest.ps1  builds the three winget manifests for a published release
 tools/mcpb.ps1        builds the Claude Desktop bundle from a self-contained publish
+tools/server-json.ps1  writes server.json for the MCP registry from a published release
 docs/                 generated charts, plus bench-summary.json
 ```
 

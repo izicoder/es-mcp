@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.izicoder/es-mcp",
+  "description": "Instant file search on Windows through Everything, for AI agents.",
+  "version": "2.3.0",
+  "websiteUrl": "https://github.com/izicoder/es-mcp",
+  "repository": {
+    "url": "https://github.com/izicoder/es-mcp",
+    "source": "github",
+    "id": "1427406263"
+  },
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/izicoder/es-mcp/releases/download/v2.3.0/es-mcp-2.3.0.mcpb",
+      "version": "2.3.0",
+      "fileSha256": "879bf1a2e763176f241204c8d22b192cac8ee795fcd873d7eee7160bf82410f0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
